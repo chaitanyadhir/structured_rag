@@ -11,3 +11,8 @@ FINAL_URL = os.getenv("FINAL_URL", f"sqlite:///{DATA_DIR / 'final.db'}")
 
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "25"))
 ALLOWED_EXTENSIONS = {".xlsx", ".xlsm"}
+
+# ---- metadata generation ----
+PROJECT_ROOT = Path(__file__).resolve().parent
+PROMPTS_DIR = Path(os.getenv("PROMPTS_DIR", PROJECT_ROOT / "prompts"))
+METADATA_PATH = DATA_DIR / "metadata.json"
