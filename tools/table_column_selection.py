@@ -15,7 +15,7 @@ class TableColumnSelector:
                  provider: Optional[LayaProvider] = None) -> None:
         # tools/ is two levels below the project root.
         self.metadata_path = Path(metadata_path) if metadata_path else (
-            Path(__file__).resolve().parents[2] / "data" / "metadata.json"
+            Path(__file__).resolve().parents[1] / "data" / "metadata.json"
         )
         self.provider = provider or LayaProvider()
 
@@ -64,7 +64,7 @@ class TableColumnSelector:
             context=context,
             question=question,
             instructions="Does this column contain information needed to answer the question?",
-            yes_criteria="The column directly contains or supports information needed to answer the question.",
+            yes_criteria="The column directly contains the keyword in question or is synonium of it ",
             no_criteria="The column is unrelated or does not help answer the question.",
         )
         return result == "yes"
