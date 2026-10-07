@@ -8,7 +8,7 @@ relation when BOTH hold:
 Value overlap alone is NOT enough: any two small integer id columns overlap.
 Everything else is returned as 'low' confidence and needs human approval.
 """
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, replace
 from pathlib import Path
 
 import pandas as pd
@@ -16,7 +16,7 @@ from sqlalchemy import (Boolean, Column, DateTime, Engine, Float, ForeignKey,
                         Integer, MetaData, String, Table, create_engine, event,
                         inspect, text)
 
-from excel_ingest import REGISTRY
+from tools.excel_ingest import REGISTRY
 
 
 @dataclass(frozen=True)
@@ -28,6 +28,7 @@ class Relation:
     name_score: float = 0.0
     containment: float = 0.0
     confidence: str = "manual"  # high | low | manual
+    note: str = ""
 
     def as_dict(self):
         return asdict(self)
@@ -80,33 +81,49 @@ class RelationDetector:
     # ---------- foreign keys ----------
     def detect_relations(self, pks: dict[str, str | None] | None = None) -> list[Relation]:
         pks = pks or self.detect_primary_keys()
-        found: dict[tuple[str, str], Relation] = {}
+        cands: dict[tuple[str, str], list[Relation]] = {}
         for child, cdf in self.tables.items():
             for ccol in cdf.columns:
-                if ccol == pks.get(child):
-                    continue
+                is_own_pk = ccol == pks.get(child)
                 cvals = cdf[ccol].dropna()
                 if cvals.empty:
                     continue
+                uniq = set(cvals.unique())
                 for parent, pcol in pks.items():
                     if pcol is None or parent == child:
                         continue
                     pser = self.tables[parent][pcol]
                     if _kind(cdf[ccol]) != _kind(pser) or _kind(pser) not in ("int", "str"):
                         continue
-                    uniq = set(cvals.unique())
                     cover = len(uniq & set(pser)) / len(uniq)
                     if cover < 0.9:   # ignore clearly unrelated columns
                         continue
                     ns = self._name_score(child, ccol, parent, pcol)
+                    if is_own_pk and ns < 0.7:
+                        continue   # avoid linking unrelated id columns (order_id vs customer_id)
                     conf = "high" if (cover == 1.0 and ns >= 0.7) else "low"
-                    rel = Relation(child, ccol, parent, pcol, round(ns, 2), round(cover, 3), conf)
-                    key = (child, ccol)
-                    # one parent per child column: keep best candidate
-                    if key not in found or (rel.name_score, rel.containment) > \
-                            (found[key].name_score, found[key].containment):
-                        found[key] = rel
-        return sorted(found.values(), key=lambda r: (r.confidence != "high", r.child_table, r.child_column))
+                    cands.setdefault((child, ccol), []).append(
+                        Relation(child, ccol, parent, pcol, round(ns, 2), round(cover, 3), conf))
+
+        out = []
+        for (child, ccol), lst in cands.items():
+            best = max((r.name_score, r.containment) for r in lst)
+            top = [r for r in lst if (r.name_score, r.containment) == best]
+            if len(top) == 1:
+                out.append(top[0]); continue
+            # Several equally good parents (typical for shared-key 1:1 tables, e.g. every
+            # HR table keyed by employee_id). The parent must have MORE rows than the child.
+            n_child = len(self.tables[child])
+            bigger = [r for r in top if len(self.tables[r.parent_table]) > n_child]
+            if bigger:
+                biggest = max(len(self.tables[r.parent_table]) for r in bigger)
+                winners = [r for r in bigger if len(self.tables[r.parent_table]) == biggest]
+                if len(winners) == 1:
+                    out.append(winners[0]); continue
+            note = ("Several tables share this key with the same row count, so the parent "
+                    "cannot be determined from data. Pick the parent yourself.")
+            out += [replace(r, confidence="low", note=note) for r in top]
+        return sorted(out, key=lambda r: (r.confidence != "high", r.child_table, r.child_column))
 
     @staticmethod
     def _name_score(child: str, ccol: str, parent: str, pcol: str) -> float:
@@ -143,12 +160,15 @@ class DatabaseBuilder:
                 cols.append(Column(c, *args, **kwargs))
             Table(tname, md, *cols)
 
-        md.create_all(engine)
         loaded = {}
-        with engine.begin() as conn:
-            for t in md.sorted_tables:       # parents before children
-                tables[t.name].to_sql(t.name, conn, if_exists="append", index=False)
-                loaded[t.name] = len(tables[t.name])
+        try:
+            md.create_all(engine)
+            with engine.begin() as conn:
+                for t in md.sorted_tables:       # parents before children
+                    tables[t.name].to_sql(t.name, conn, if_exists="append", index=False)
+                    loaded[t.name] = len(tables[t.name])
+        finally:
+            engine.dispose()                      # release final.db file handle
         return {"tables": loaded,
                 "primary_keys": {k: v for k, v in pks.items() if v},
                 "foreign_keys_applied": [r.as_dict() for r in relations],
@@ -158,15 +178,14 @@ class DatabaseBuilder:
     def _fresh_engine(self) -> Engine:
         engine = create_engine(self.final_url)
         if engine.dialect.name == "sqlite":
-            Path(engine.url.database).unlink(missing_ok=True)
-            engine.dispose()
-            engine = create_engine(self.final_url)
-
             @event.listens_for(engine, "connect")
             def _fk_on(dbapi_conn, _):
                 dbapi_conn.execute("PRAGMA foreign_keys=ON")
-        else:
-            md = MetaData(); md.reflect(engine); md.drop_all(engine)
+        # Drop old tables instead of deleting the file: deleting fails on Windows
+        # whenever any process (or an old engine) still has final.db open.
+        md = MetaData()
+        md.reflect(engine)
+        md.drop_all(engine)
         return engine
 
     @staticmethod
