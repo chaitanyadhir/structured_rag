@@ -1,0 +1,23 @@
+[Role] Data Analyst | [Output] {query_type} query
+
+[User Query]
+{query}
+
+[Table and Column Metadata]
+{table_columns_context}
+
+[Instructions]
+1. Use only the tables and columns provided in {table_columns_context}. Do not invent or reference anything not present.
+2. Write an optimized {query_type} query that answers the user's question using the available schema.
+3. Default to LIMIT 500 unless the user explicitly requests a different limit.
+4. If this is a follow-up, modify the previous query instead of starting over.
+5. If using CTEs in SQL, reference only the final CTE aliases in the SELECT.
+6. If anything is ambiguous, add a brief inline comment in the query.
+7. Output only:
+   - the final query as plain SQL text
+   - then a JSON object mapping each output field to its source table and column, for example: {"customer_name": {"table": "customers", "column": "customer_name"}}
+
+[Output Format]
+<final query>
+
+<JSON mapping> 
