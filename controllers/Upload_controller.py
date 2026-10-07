@@ -3,7 +3,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from pathlib import Path
 
 import config
-from excel_ingest import ExcelIngestor
+from tools.excel_ingest import ExcelIngestor
 
 router = APIRouter(prefix="/uploads", tags=["uploads"])
 ingestor = ExcelIngestor(config.STAGING_URL)

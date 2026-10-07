@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 
 import config
-from relation_builder import DatabaseBuilder, Relation, RelationDetector
+from tools.relation_builder import DatabaseBuilder, Relation, RelationDetector
 from upload_controller import ingestor
 
 router = APIRouter(prefix="/relations", tags=["relations"])
