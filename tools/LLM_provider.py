@@ -12,8 +12,10 @@ Config (environment variables):
 
 To switch provider later (OpenAI, Bedrock, local...), change only this file.
 """
+from dotenv import load_dotenv
 import os
 
+load_dotenv()
 
 class LLMError(RuntimeError):
     """The model call failed (network, rate limit, bad response...)."""
@@ -51,7 +53,7 @@ def llm_call(prompt: str, *, system: str | None = None, max_tokens: int | None =
     messages.append({"role": "user", "content": prompt})
 
     kwargs = {
-        "model": os.getenv("LLM_MODEL", "llama-3.3-70b-versatile"),
+        "model": os.getenv("LLM_MODEL", "qwen/qwen3.8-27b"),
         "max_tokens": max_tokens or int(os.getenv("LLM_MAX_TOKENS", "4096")),
         "messages": messages,
     }
