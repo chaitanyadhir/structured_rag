@@ -1,0 +1,8 @@
+fastapi==0.115.*
+uvicorn[standard]==0.32.*
+python-multipart==0.0.*   # required by FastAPI for file uploads
+pandas==2.2.*
+openpyxl==3.1.*           # reads .xlsx / .xlsm
+SQLAlchemy==2.0.*
+# Only needed for tests:
+httpx==0.27.*
