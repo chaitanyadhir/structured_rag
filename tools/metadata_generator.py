@@ -17,8 +17,8 @@ import pandas as pd
 from sqlalchemy import Engine, MetaData, create_engine, func, inspect, select
 
 import config
-from tools import llm_provider
-from tools.llm_provider import LLMConfigError
+from tools import LLM_provider
+from tools.LLM_provider import LLMConfigError
 
 PROMPT_FILE = "metadata_generation.txt"
 PLACEHOLDERS = ("{table content}", "{table_content}")

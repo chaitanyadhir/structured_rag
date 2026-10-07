@@ -5,8 +5,8 @@ One place for LLM access. Use anywhere:
     answer = llm_call("Summarise this ...")      # -> str
 
 Config (environment variables):
-    ANTHROPIC_API_KEY   required
-    LLM_MODEL           default "claude-sonnet-5-5"
+    GROQ_API_KEY        required
+    LLM_MODEL           default "llama-3.3-70b-versatile"
     LLM_MAX_TOKENS      default 4096
     LLM_TIMEOUT         seconds, default 60
 
@@ -29,14 +29,14 @@ _client = None
 def _get_client():
     global _client
     if _client is None:
-        key = os.getenv("ANTHROPIC_API_KEY")
+        key = os.getenv("GROQ_API_KEY")
         if not key:
-            raise LLMConfigError("ANTHROPIC_API_KEY is not set")
+            raise LLMConfigError("GROQ_API_KEY is not set")
         try:
-            from anthropic import Anthropic
+            from groq import Groq
         except ImportError as e:
-            raise LLMConfigError("The 'anthropic' package is not installed (pip install anthropic)") from e
-        _client = Anthropic(api_key=key, timeout=float(os.getenv("LLM_TIMEOUT", "60")), max_retries=2)
+            raise LLMConfigError("The 'groq' package is not installed (pip install groq)") from e
+        _client = Groq(api_key=key, timeout=float(os.getenv("LLM_TIMEOUT", "60")), max_retries=2)
     return _client
 
 
@@ -45,16 +45,22 @@ def llm_call(prompt: str, *, system: str | None = None, max_tokens: int | None =
     if not isinstance(prompt, str) or not prompt.strip():
         raise ValueError("prompt must be a non-empty string")
     client = _get_client()
-    kwargs = {"model": os.getenv("LLM_MODEL", "claude-sonnet-5-5"),
-              "max_tokens": max_tokens or int(os.getenv("LLM_MAX_TOKENS", "4096")),
-              "messages": [{"role": "user", "content": prompt}]}
+    messages = []
     if system:
-        kwargs["system"] = system
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+
+    kwargs = {
+        "model": os.getenv("LLM_MODEL", "llama-3.3-70b-versatile"),
+        "max_tokens": max_tokens or int(os.getenv("LLM_MAX_TOKENS", "4096")),
+        "messages": messages,
+    }
     try:
-        response = client.messages.create(**kwargs)
+        response = client.chat.completions.create(**kwargs)
     except Exception as e:                    # SDK raises many types; callers only need one
         raise LLMError(f"LLM request failed: {type(e).__name__}: {e}") from e
-    text = "".join(b.text for b in response.content if getattr(b, "type", None) == "text")
+    
+    text = response.choices[0].message.content or ""
     if not text.strip():
         raise LLMError("LLM returned no text")
     return text
