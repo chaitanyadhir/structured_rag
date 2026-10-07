@@ -16,8 +16,8 @@
 7. Output only:
    - the final query as plain SQL text
    - then a JSON object mapping each output field to its source table and column, for example: {"customer_name": {"table": "customers", "column": "customer_name"}}
-
+imortant
 [Output Format]
 <final query>
-
+sql query only no semicolon no markup
 <JSON mapping> 
