@@ -1,5 +1,8 @@
 """STEP 1 ENDPOINTS: upload Excel files, list / drop staging tables."""
+import io
+
 from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from pathlib import Path
 
 import config
@@ -23,8 +26,8 @@ async def upload_excels(files: list[UploadFile] = File(...)):
             failed.append({"file": f.filename, "error": f"Larger than {config.MAX_UPLOAD_MB} MB"})
             continue
         try:
-            import io
-            ok.extend(r.__dict__ for r in ingestor.ingest(f.filename, io.BytesIO(data)))
+            results = await run_in_threadpool(ingestor.ingest, f.filename, io.BytesIO(data))
+            ok.extend(r.__dict__ for r in results)
         except ValueError as e:
             failed.append({"file": f.filename, "error": str(e)})
     if not ok and failed:

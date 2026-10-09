@@ -9,7 +9,9 @@ Split of responsibility (on purpose):
 PRIVACY: the prompt contains real rows from your tables and is sent to the LLM provider.
 """
 import json
+import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -59,14 +61,25 @@ class MetadataGenerator:
         return sorted(inspect(self.engine).get_table_names())
 
     def generate_all(self) -> dict:
+        names = self.list_tables()
+        workers = max(1, int(os.getenv("LLM_WORKERS", "4")))
         tables, errors = {}, {}
-        for name in self.list_tables():
+
+        def work(name):
             try:
-                tables[name] = self.generate_for_table(name)
+                return name, self.generate_for_table(name), None
             except LLMConfigError:
                 raise                                   # missing key: every table would fail the same way
             except Exception as e:                      # one bad table must not kill the rest
-                errors[name] = f"{type(e).__name__}: {e}"
+                return name, None, f"{type(e).__name__}: {e}"
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            results = list(pool.map(work, names))       # preserves sorted order
+        for name, res, err in results:
+            if err:
+                errors[name] = err
+            else:
+                tables[name] = res
         return {"generated_at": datetime.now(timezone.utc).isoformat(), "tables": tables, "errors": errors}
 
     def generate_for_table(self, name: str) -> dict:

@@ -15,6 +15,17 @@ from sqlalchemy import Engine, create_engine, inspect, text
 REGISTRY = "_upload_registry"
 
 
+def _excel_engine(filename: str) -> str:
+    """calamine is much faster than openpyxl; use it for .xlsx if installed."""
+    if Path(filename).suffix.lower() == ".xlsx":
+        try:
+            import python_calamine  # noqa: F401
+            return "calamine"
+        except ImportError:
+            pass
+    return "openpyxl"
+
+
 def sanitize_identifier(name: str) -> str:
     s = re.sub(r"[^0-9a-zA-Z]+", "_", str(name).strip()).strip("_").lower()
     if not s:
@@ -61,7 +72,7 @@ class ExcelIngestor:
     def ingest(self, filename: str, fileobj: BinaryIO) -> list[IngestResult]:
         stem = sanitize_identifier(Path(filename).stem)
         try:
-            sheets = pd.read_excel(fileobj, sheet_name=None, engine="openpyxl")
+            sheets = pd.read_excel(fileobj, sheet_name=None, engine=_excel_engine(filename))
         except Exception as e:
             raise ValueError(f"Could not read '{filename}' as Excel: {e}") from e
 

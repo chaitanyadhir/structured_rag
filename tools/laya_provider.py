@@ -74,8 +74,15 @@ class LayaProvider:
                 return f"error: {str(e)}"
 
 
-# Default instance for quick imports
-_default_provider = LayaProvider()
+# Shared instance: Router() is built once, lazily, and reused everywhere.
+_default_provider: Optional[LayaProvider] = None
+
+
+def get_default_provider() -> LayaProvider:
+    global _default_provider
+    if _default_provider is None:
+        _default_provider = LayaProvider()
+    return _default_provider
 
 async def evaluate_usability(
     context: Union[str, Dict[str, Any]],
@@ -92,7 +99,7 @@ async def evaluate_usability(
     Returns:
         str: "yes", "no", or "error: <details>"
     """
-    return await _default_provider.evaluate_binary_choice(
+    return await get_default_provider().evaluate_binary_choice(
         context=context,
         question=question,
         choice_key=choice_key

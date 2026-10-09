@@ -1,13 +1,14 @@
 """
 One place for LLM access. Use anywhere:
 
-    from tools.llm_provider import llm_call
+    from tools.LLM_provider import llm_call
     answer = llm_call("Summarise this ...")      # -> str
 
 Config (environment variables):
     GROQ_API_KEY        required
-    LLM_MODEL           default "llama-3.3-70b-versatile"
+    LLM_MODEL           default "qwen/qwen3.8-27b"
     LLM_MAX_TOKENS      default 4096
+    LLM_TEMPERATURE     default 0 (deterministic SQL / JSON)
     LLM_TIMEOUT         seconds, default 60
 
 To switch provider later (OpenAI, Bedrock, local...), change only this file.
@@ -42,6 +43,14 @@ def _get_client():
     return _client
 
 
+def warm_up() -> None:
+    """Build the client at startup; silently skip if not configured."""
+    try:
+        _get_client()
+    except LLMConfigError:
+        pass
+
+
 def llm_call(prompt: str, *, system: str | None = None, max_tokens: int | None = None) -> str:
     """Send a text prompt, get the model's text answer back."""
     if not isinstance(prompt, str) or not prompt.strip():
@@ -55,6 +64,7 @@ def llm_call(prompt: str, *, system: str | None = None, max_tokens: int | None =
     kwargs = {
         "model": os.getenv("LLM_MODEL", "qwen/qwen3.8-27b"),
         "max_tokens": max_tokens or int(os.getenv("LLM_MAX_TOKENS", "4096")),
+        "temperature": float(os.getenv("LLM_TEMPERATURE", "0")),
         "messages": messages,
     }
     try:

@@ -5,7 +5,8 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .laya_provider import LayaProvider
+import config
+from .laya_provider import LayaProvider, get_default_provider
 
 
 class TableColumnSelector:
@@ -13,19 +14,33 @@ class TableColumnSelector:
 
     def __init__(self, metadata_path: Optional[str] = None,
                  provider: Optional[LayaProvider] = None) -> None:
-        # tools/ is two levels below the project root.
-        self.metadata_path = Path(metadata_path) if metadata_path else (
-            Path(__file__).resolve().parents[1] / "data" / "metadata.json"
-        )
-        self.provider = provider or LayaProvider()
+        # Same file the metadata generator writes (honours DATA_DIR).
+        self.metadata_path = Path(metadata_path) if metadata_path else config.METADATA_PATH
+        self.provider = provider or get_default_provider()
+        self._cache: Optional[Dict[str, Any]] = None
+        self._cache_mtime: float = -1.0
 
     def load_metadata(self) -> Dict[str, Any]:
-        """Read metadata.json and verify its expected top-level structure."""
+        """Read metadata.json (cached; re-read only when the file changes)."""
+        mtime = self.metadata_path.stat().st_mtime      # FileNotFoundError if missing
+        if self._cache is not None and mtime == self._cache_mtime:
+            return self._cache
         with self.metadata_path.open("r", encoding="utf-8") as source:
             metadata = json.load(source)
         if not isinstance(metadata, dict) or not isinstance(metadata.get("tables"), dict):
             raise ValueError("Metadata must contain a 'tables' object.")
+        self._cache, self._cache_mtime = metadata, mtime
         return metadata
+
+    def get_table(self, name: str) -> Dict[str, Any]:
+        """Return one table's metadata entry (matched by key or table_name), or {}."""
+        tables = self.load_metadata()["tables"]
+        if isinstance(tables.get(name), dict):
+            return tables[name]
+        for table in tables.values():
+            if isinstance(table, dict) and table.get("table_name") == name:
+                return table
+        return {}
 
     async def select(self, question: str) -> Dict[str, List[str]]:
         """Return only relevant columns, grouped under their table names."""
@@ -68,3 +83,14 @@ class TableColumnSelector:
             no_criteria="The column is unrelated or does not help answer the question.",
         )
         return result == "yes"
+
+
+_selector: Optional[TableColumnSelector] = None
+
+
+def get_selector() -> TableColumnSelector:
+    """Process-wide selector so the Laya Router and metadata cache are shared."""
+    global _selector
+    if _selector is None:
+        _selector = TableColumnSelector()
+    return _selector
